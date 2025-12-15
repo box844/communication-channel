@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Private Comms</title>
+  <title>Private Comms – Stable Build</title>
   <style>
     body {
       margin: 0;
@@ -26,7 +26,7 @@
       border-right: 1px solid #222;
     }
     h3 {
-      margin-top: 0;
+      margin: 0 0 10px 0;
       text-align: center;
       color: #7cf;
     }
@@ -38,7 +38,9 @@
     }
     #input {
       display: flex;
+      gap: 5px;
       border-top: 1px solid #222;
+      padding: 5px;
     }
     input, button {
       background: #111;
@@ -57,7 +59,7 @@
       margin-bottom: 5px;
     }
     .task button { color: red; }
-    a { color: #7cf; }
+    a { color: #7cf; text-decoration: none; }
   </style>
 </head>
 <body>
@@ -89,8 +91,9 @@ import {
   getDatabase,
   ref,
   push,
-  onValue,
-  remove
+  remove,
+  onChildAdded,
+  get
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 /* ===== FIREBASE CONFIG ===== */
@@ -117,6 +120,29 @@ const tasksList = document.getElementById("tasksList");
 
 const chatRef = ref(db, "channel");
 const taskRef = ref(db, "tasks");
+
+/* ===== RENDER MESSAGE ===== */
+function renderMessage(d) {
+  if (d.type === "msg") {
+    log.innerHTML += `<div><b>${d.u}:</b> ${d.text}</div>`;
+  }
+  if (d.type === "file") {
+    log.innerHTML += `<div><b>${d.u}:</b> <a href="${d.data}" download="${d.name}">${d.name}</a></div>`;
+  }
+}
+
+/* ===== LOAD CHAT HISTORY ONCE ===== */
+get(chatRef).then(snapshot => {
+  if (!snapshot.exists()) return;
+  snapshot.forEach(child => renderMessage(child.val()));
+  log.scrollTop = log.scrollHeight;
+});
+
+/* ===== LIVE CHAT UPDATES ===== */
+onChildAdded(chatRef, snap => {
+  renderMessage(snap.val());
+  log.scrollTop = log.scrollHeight;
+});
 
 /* ===== SEND MESSAGE ===== */
 window.sendMsg = () => {
@@ -152,21 +178,6 @@ file.addEventListener("change", () => {
   r.readAsDataURL(f);
 });
 
-/* ===== LOAD CHAT (PERSISTENT) ===== */
-onValue(chatRef, snap => {
-  log.innerHTML = "";
-  snap.forEach(child => {
-    const d = child.val();
-    if (d.type === "msg") {
-      log.innerHTML += `<div><b>${d.u}:</b> ${d.text}</div>`;
-    }
-    if (d.type === "file") {
-      log.innerHTML += `<div><b>${d.u}:</b> <a href="${d.data}" download="${d.name}">${d.name}</a></div>`;
-    }
-  });
-  log.scrollTop = log.scrollHeight;
-});
-
 /* ===== TASKS ===== */
 window.addTask = () => {
   if (!taskInput.value.trim()) return;
@@ -178,21 +189,22 @@ window.addTask = () => {
   taskInput.value = "";
 };
 
-onValue(taskRef, snap => {
-  tasksList.innerHTML = "";
-  snap.forEach(child => {
-    const d = child.val();
-    const key = child.key;
-
-    const div = document.createElement("div");
-    div.className = "task";
-    div.innerHTML = `<span>${d.text}</span><button>✖</button>`;
-    div.querySelector("button").onclick = () =>
-      remove(ref(db, "tasks/" + key));
-
-    tasksList.appendChild(div);
-  });
+get(taskRef).then(snapshot => {
+  if (!snapshot.exists()) return;
+  snapshot.forEach(child => renderTask(child.key, child.val()));
 });
+
+onChildAdded(taskRef, snap => renderTask(snap.key, snap.val()));
+
+function renderTask(key, d) {
+  if (document.getElementById(key)) return;
+  const div = document.createElement("div");
+  div.className = "task";
+  div.id = key;
+  div.innerHTML = `<span>${d.text}</span><button>✖</button>`;
+  div.querySelector("button").onclick = () => remove(ref(db, "tasks/" + key));
+  tasksList.appendChild(div);
+}
 </script>
 
 </body>
