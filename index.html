@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Shared Comms</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+  margin: 0;
+  background:#050505;
+  color:#00ff88;
+  font-family: monospace;
+}
+
+/* --- Layout --- */
+#container {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 1fr;
+  height: 100vh;
+}
+
+/* --- Panels --- */
+.panel {
+  border-right:1px solid #00ff8833;
+  padding:10px;
+  box-sizing: border-box;
+}
+
+.panel:last-child {
+  border-right:none;
+}
+
+h3 {
+  margin-top:0;
+  opacity:.8;
+}
+
+/* --- Shared UI --- */
+input, button {
+  width:100%;
+  background:#000;
+  color:#00ff88;
+  border:1px solid #00ff8855;
+  padding:6px;
+  margin-top:5px;
+  font-family: monospace;
+}
+
+button {
+  cursor:pointer;
+}
+
+#log {
+  border:1px solid #00ff8855;
+  height:60vh;
+  overflow:auto;
+  padding:6px;
+  margin-bottom:6px;
+}
+
+#tasks {
+  border:1px solid #00ff8855;
+  height:70vh;
+  overflow:auto;
+  padding:6px;
+}
+
+.task {
+  display:flex;
+  justify-content:space-between;
+  margin-bottom:4px;
+}
+
+a {
+  color:#00ffaa;
+  text-decoration:none;
+}
+</style>
+</head>
+
+<body>
+
+<div id="container">
+
+  <!-- LEFT: TASKS -->
+  <div class="panel">
+    <h3>Tasks</h3>
+    <input id="taskInput" placeholder="new task">
+    <button onclick="addTask()">add</button>
+    <div id="tasks"></div>
+  </div>
+
+  <!-- CENTER: SHARED CHANNEL -->
+  <div class="panel">
+    <h3>Shared Channel</h3>
+    <div id="log"></div>
+    <input id="msg" placeholder="type message & press enter">
+    <button onclick="send()">send</button>
+  </div>
+
+  <!-- RIGHT: FILE UPLOAD -->
+  <div class="panel">
+    <h3>File Share</h3>
+    <input type="file" id="file">
+    <p style="font-size:11px;opacity:.7">
+      small code files only
+    </p>
+  </div>
+
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, push, onChildAdded, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+/* 🔴 YOUR FIREBASE CONFIG */
+const firebaseConfig = {
+  apiKey: "API_KEY",
+  authDomain: "PROJECT.firebaseapp.com",
+  databaseURL: "https://PROJECT.firebaseio.com",
+  projectId: "PROJECT"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+const user = prompt("name");
+
+/* ---------- CHAT ---------- */
+const channel = ref(db, "channel");
+
+window.send = () => {
+  if (!msg.value.trim()) return;
+  push(channel, {
+    type: "msg",
+    u: user,
+    content: msg.value,
+    t: Date.now()
+  });
+  msg.value = "";
+};
+
+msg.addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    send();
+  }
+});
+
+/* ---------- FILE UPLOAD ---------- */
+file.addEventListener("change", () => {
+  const f = file.files[0];
+  if (!f) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    push(channel, {
+      type: "file",
+      u: user,
+      name: f.name,
+      data: reader.result,
+      t: Date.now()
+    });
+    file.value = "";
+  };
+  reader.readAsDataURL(f);
+});
+
+/* ---------- TASKS (FINAL FIX) ---------- */
+const taskRef = ref(db, "tasks");
+
+window.addTask = () => {
+  if (!taskInput.value.trim()) return;
+
+  push(taskRef, {
+    text: taskInput.value,
+    by: user,
+    time: Date.now()
+  });
+
+  taskInput.value = "";
+};
+
+onChildAdded(taskRef, snap => {
+  const data = snap.val();
+
+  const task = document.createElement("div");
+  task.className = "task";
+  task.id = "task-" + snap.key;
+
+  task.innerHTML = `
+    <span>${data.text}</span>
+    <button class="del">✖</button>
+  `;
+
+  task.querySelector(".del").onclick = () => {
+    remove(ref(db, "tasks/" + snap.key));
+  };
+
+  tasks.appendChild(task);
+});
+
+onChildRemoved(taskRef, snap => {
+  const el = document.getElementById("task-" + snap.key);
+  if (el) el.remove();
+});
+
+
+/* ---------- RECEIVE CHAT ---------- */
+onChildAdded(channel, snap => {
+  const d = snap.val();
+
+  if (d.type === "msg") {
+    log.innerHTML += `<div><b>${d.u}:</b> ${d.content}</div>`;
+  }
+
+  if (d.type === "file") {
+    log.innerHTML += `
+      <div>
+        <b>${d.u}:</b>
+        <a href="${d.data}" download="${d.name}">
+          📎 ${d.name}
+        </a>
+      </div>`;
+  }
+
+  log.scrollTop = log.scrollHeight;
+});
+</script>
+
+</body>
+</html>
