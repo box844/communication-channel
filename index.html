@@ -56,9 +56,7 @@
       padding: 5px;
       margin-bottom: 5px;
     }
-    .task button {
-      color: red;
-    }
+    .task button { color: red; }
     a { color: #7cf; }
   </style>
 </head>
@@ -91,11 +89,11 @@ import {
   getDatabase,
   ref,
   push,
-  onChildAdded,
-  onChildRemoved,
+  onValue,
   remove
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
+/* ===== FIREBASE CONFIG ===== */
 const firebaseConfig = {
   apiKey: "YOUR_API_KEY",
   authDomain: "YOUR_PROJECT.firebaseapp.com",
@@ -120,9 +118,15 @@ const tasksList = document.getElementById("tasksList");
 const chatRef = ref(db, "channel");
 const taskRef = ref(db, "tasks");
 
+/* ===== SEND MESSAGE ===== */
 window.sendMsg = () => {
   if (!msg.value.trim()) return;
-  push(chatRef, { type: "msg", u: user, text: msg.value, t: Date.now() });
+  push(chatRef, {
+    type: "msg",
+    u: user,
+    text: msg.value,
+    t: Date.now()
+  });
   msg.value = "";
 };
 
@@ -130,47 +134,64 @@ msg.addEventListener("keydown", e => {
   if (e.key === "Enter") sendMsg();
 });
 
+/* ===== FILE SHARE ===== */
 file.addEventListener("change", () => {
   const f = file.files[0];
   if (!f) return;
   const r = new FileReader();
   r.onload = () => {
-    push(chatRef, { type: "file", u: user, name: f.name, data: r.result });
+    push(chatRef, {
+      type: "file",
+      u: user,
+      name: f.name,
+      data: r.result,
+      t: Date.now()
+    });
     file.value = "";
   };
   r.readAsDataURL(f);
 });
 
-onChildAdded(chatRef, snap => {
-  const d = snap.val();
-  if (d.type === "msg") {
-    log.innerHTML += `<div><b>${d.u}:</b> ${d.text}</div>`;
-  }
-  if (d.type === "file") {
-    log.innerHTML += `<div><b>${d.u}:</b> <a href="${d.data}" download="${d.name}">${d.name}</a></div>`;
-  }
+/* ===== LOAD CHAT (PERSISTENT) ===== */
+onValue(chatRef, snap => {
+  log.innerHTML = "";
+  snap.forEach(child => {
+    const d = child.val();
+    if (d.type === "msg") {
+      log.innerHTML += `<div><b>${d.u}:</b> ${d.text}</div>`;
+    }
+    if (d.type === "file") {
+      log.innerHTML += `<div><b>${d.u}:</b> <a href="${d.data}" download="${d.name}">${d.name}</a></div>`;
+    }
+  });
   log.scrollTop = log.scrollHeight;
 });
 
+/* ===== TASKS ===== */
 window.addTask = () => {
   if (!taskInput.value.trim()) return;
-  push(taskRef, { text: taskInput.value, by: user });
+  push(taskRef, {
+    text: taskInput.value,
+    by: user,
+    t: Date.now()
+  });
   taskInput.value = "";
 };
 
-onChildAdded(taskRef, snap => {
-  const d = snap.val();
-  const div = document.createElement("div");
-  div.className = "task";
-  div.id = snap.key;
-  div.innerHTML = `<span>${d.text}</span><button>✖</button>`;
-  div.querySelector("button").onclick = () => remove(ref(db, "tasks/" + snap.key));
-  tasksList.appendChild(div);
-});
+onValue(taskRef, snap => {
+  tasksList.innerHTML = "";
+  snap.forEach(child => {
+    const d = child.val();
+    const key = child.key;
 
-onChildRemoved(taskRef, snap => {
-  const el = document.getElementById(snap.key);
-  if (el) el.remove();
+    const div = document.createElement("div");
+    div.className = "task";
+    div.innerHTML = `<span>${d.text}</span><button>✖</button>`;
+    div.querySelector("button").onclick = () =>
+      remove(ref(db, "tasks/" + key));
+
+    tasksList.appendChild(div);
+  });
 });
 </script>
 
